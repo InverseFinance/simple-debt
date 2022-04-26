@@ -40,13 +40,18 @@ contract SimpleDebt {
     event ReduceDebtCeiling(address gov, uint256 amount, uint256 debtCeiling);
     event ChangeDebtor(address gov, address oldDebtor, address newDebtor);
 
+    error OnlyGov();
+    error OnlyDebtor();
+    error OutstandingDebtExceedsCeiling();
+    error RepayAmountExceedsOutstandingDebt();
+
     constructor(address underlying_, address gov_) {
         underlying = IERC20Mintable(underlying_);
         gov = gov_;
     }
 
     modifier onlyGovernance() {
-        require(msg.sender == gov, "ONLY GOV");
+        if (msg.sender != gov) revert OnlyGov();
         _;
     }
 
@@ -63,8 +68,9 @@ contract SimpleDebt {
      * @param newDebtor_ The address of the debtor
      */
     function changeDebtor(address newDebtor_) public onlyGovernance {
-        emit ChangeDebtor(gov, debtor, newDebtor_);
         debtor = newDebtor_;
+
+        emit ChangeDebtor(gov, debtor, newDebtor_);
     }
 
     /**
@@ -73,6 +79,7 @@ contract SimpleDebt {
      */
     function addDebtCeiling(uint256 amount) public onlyGovernance {
         debtCeiling += amount;
+
         emit AddDebtCeiling(gov, amount, debtCeiling);
     }
 
@@ -81,8 +88,10 @@ contract SimpleDebt {
      * @param amount The amount to remove from the debt ceiling
      */
     function reduceDebtCeiling(uint256 amount) public onlyGovernance {
-        require(debtCeiling >= outstandingDebt, "CEILING < DEBT");
+        if (debtCeiling < outstandingDebt) revert OutstandingDebtExceedsCeiling();
+
         debtCeiling -= amount;
+
         emit ReduceDebtCeiling(gov, amount, debtCeiling);
     }
 
@@ -91,10 +100,12 @@ contract SimpleDebt {
      * @param amount The amount of debt to accrue
      */
     function accrueDebt(uint256 amount) public {
-        require(msg.sender == debtor, "ONLY DEBTOR");
+        if (msg.sender != debtor) revert OnlyDebtor();
+        if (outstandingDebt + amount > debtCeiling) revert OutstandingDebtExceedsCeiling();
+
         underlying.mint(debtor, amount);
         outstandingDebt += amount;
-        require(outstandingDebt <= debtCeiling, "TOO MUCH DEBT");
+
         emit AddDebt(debtor, amount, outstandingDebt);
     }
 
@@ -103,10 +114,8 @@ contract SimpleDebt {
      * @param amount The amount of debt to reduce
      */
     function repayDebt(uint256 amount) public {
-        require(amount <= outstandingDebt, "AMOUNT GREATER THAN DEBT");
-        outstandingDebt -= amount;
-        emit ReduceDebt(msg.sender, amount, outstandingDebt);
-
+        if (amount > outstandingDebt) revert RepayAmountExceedsOutstandingDebt();
+        
         SafeERC20.safeTransferFrom(
             underlying,
             msg.sender,
@@ -115,6 +124,9 @@ contract SimpleDebt {
         );
 
         underlying.burn(amount);
+        outstandingDebt -= amount;
+
+        emit ReduceDebt(msg.sender, amount, outstandingDebt);
     }
 }
 
@@ -135,13 +147,17 @@ contract FedDebtManager {
 
     event DolaGarnishment(address gov, uint256 debtPayment, uint256 profit);
 
+    error OnlyGov();
+    error PaybackRatioTooHigh();
+    error NoUnderlyingBalance();
+
     constructor(address underlying_, address gov_) {
         underlying = IERC20Mintable(underlying_);
         gov = gov_;
     }
 
     modifier onlyGovernance() {
-        require(msg.sender == gov, "ONLY GOV");
+        if (msg.sender != gov) revert OnlyGov();
         _;
     }
 
@@ -165,7 +181,8 @@ contract FedDebtManager {
     }
 
     function setPaybackRatio(uint256 amount) public onlyGovernance {
-        require(amount <= PAYBACK_RATIO_DENOMINATOR, "amount too high");
+        if(amount > PAYBACK_RATIO_DENOMINATOR) revert PaybackRatioTooHigh();
+
         paybackRatio = amount;
     }
 
@@ -175,7 +192,7 @@ contract FedDebtManager {
     function dolaGarnishment() public {
         uint256 profit = underlying.balanceOf(address(this));
         uint256 debtPayment;
-        require(profit > 0, "no profit");
+        if (profit <= 0) revert NoUnderlyingBalance();
 
         if (paybackRatio > 0) {
             uint256 outstandingDebt = debt.outstandingDebt();
