@@ -104,7 +104,7 @@ contract SimpleDebt {
      */
     function repayDebt(uint256 amount) public {
         require(amount <= outstandingDebt, "AMOUNT GREATER THAN DEBT");
-        outstandingDebt -= outstandingDebt;
+        outstandingDebt -= amount;
         emit ReduceDebt(msg.sender, amount, outstandingDebt);
 
         SafeERC20.safeTransferFrom(
@@ -153,15 +153,15 @@ contract FedDebtManager {
         gov = newGov_;
     }
 
-    function changeFedGov(IFed fed, address newFedGov_) public onlyGovernance {
-        fed.changeGov(newFedGov_);
+    function changeFedGov(address fed, address newFedGov_) public onlyGovernance {
+        IFed(fed).changeGov(newFedGov_);
     }
 
-    function changeFedChair(IFed fed, address newFedChair_)
+    function changeFedChair(address fed, address newFedChair_)
         public
         onlyGovernance
     {
-        fed.changeChair(newFedChair_);
+        IFed(fed).changeChair(newFedChair_);
     }
 
     function setPaybackRatio(uint256 amount) public onlyGovernance {
