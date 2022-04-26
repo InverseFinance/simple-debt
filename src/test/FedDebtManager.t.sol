@@ -198,6 +198,34 @@ contract FedDebtManagerTest is DSTest {
         assert(prevGovBalance + 1000 * 10**18 == DOLA.balanceOf(gov));
     }
 
+    function testDolaGarnishmentGreaterThanOutstandingDebtSendsExcessToGov() public {
+        vm.startPrank(gov);
+
+        simpleDebt.addDebtCeiling(100 * 10**18);
+        fedDebtManager.setPaybackRatio(2500);
+
+        vm.startPrank(twgPlaceholder);
+
+        simpleDebt.accrueDebt(100 * 10**18);
+
+        gibDOLA();
+
+        uint256 prevOustandingDebt = simpleDebt.outstandingDebt();
+        uint256 prevGovBalance = DOLA.balanceOf(gov);
+
+        fedDebtManager.dolaGarnishment();
+
+        //100 DOLA should be used to pay the outstanding debts, with 900 being sent to gov since it's excess
+        assert(prevOustandingDebt - 100 * 10**18 == simpleDebt.outstandingDebt());
+        assert(prevGovBalance + 900 * 10**18 == DOLA.balanceOf(gov));
+    }
+
+    function testFailSetPaybackRatioAboveLimit() public {
+        vm.startPrank(gov);
+
+        fedDebtManager.setPaybackRatio(10001);
+    }
+
     //Helper functions
     function gibDOLA() internal {
         address _fedDebtManager = address(fedDebtManager);

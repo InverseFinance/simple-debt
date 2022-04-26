@@ -138,6 +138,23 @@ contract SimpleDebtTest is DSTest {
         assert(simpleDebt.outstandingDebt() == 100);
     }
 
+    function testAccrueDebtMintsDolaEqualToDebtAmount() public {
+        vm.startPrank(gov);
+        
+        simpleDebt.changeDebtor(twgPlaceholder);
+        simpleDebt.addDebtCeiling(100);
+
+        uint256 prevOutstandingDebt = simpleDebt.outstandingDebt();
+        uint256 prevDolaBal = DOLA.balanceOf(twgPlaceholder);
+
+        vm.startPrank(twgPlaceholder);
+
+        simpleDebt.accrueDebt(100);
+
+        assert(prevOutstandingDebt + 100 == simpleDebt.outstandingDebt());
+        assert(prevDolaBal + 100 == DOLA.balanceOf(twgPlaceholder));
+    }
+
     function testFailAccrueDebtAboveDebtCeiling() public {
         vm.startPrank(gov);
 
@@ -162,7 +179,7 @@ contract SimpleDebtTest is DSTest {
         simpleDebt.repayDebt(101);
     }
 
-    function testRepayDebtBurnsUnderlying() public {
+    function testRepayDebtBurnsUnderlyingEqualToDebtRepaid() public {
         vm.startPrank(gov);
 
         simpleDebt.changeDebtor(twgPlaceholder);
@@ -172,10 +189,12 @@ contract SimpleDebtTest is DSTest {
         simpleDebt.accrueDebt(100);
 
         DOLA.approve(address(simpleDebt), type(uint256).max);
-        uint256 dolaSupply = DOLA.totalSupply();
+        uint256 prevDolaSupply = DOLA.totalSupply();
+        uint256 prevOutstandingDebt = simpleDebt.outstandingDebt();
 
         simpleDebt.repayDebt(100);
 
-        assert(dolaSupply - 100 == DOLA.totalSupply());
+        assert(prevDolaSupply - 100 == DOLA.totalSupply());
+        assert(prevOutstandingDebt - 100 == simpleDebt.outstandingDebt());
     }
 }
